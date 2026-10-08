@@ -1,0 +1,69 @@
+{
+  "android": {
+    "arm64": true,
+    "immersive": true,
+    "keepScreenOn": true,
+    "minSdk": 26,
+    "orientation": "sensorLandscape",
+    "outputDir": "Build/Android",
+    "packageName": "",
+    "targetSdk": 0,
+    "versionCode": 1,
+    "x86_64": true
+  },
+  "build": {
+    "cleanFirst": false,
+    "development": false,
+    "excludeExtensions": ".cpp .h .hpp .inl .fbx .glb .gltf .blend .psd .ini",
+    "excludeFolders": [
+      "Assets/Scripts"
+    ],
+    "openFolder": true,
+    "outputDir": "Build/Windows",
+    "stopOnProblems": false,
+    "zip": false
+  },
+  "input": {
+    "cursor": "visible"
+  },
+  "platform": "windows",
+  "product": {
+    "company": "",
+    "copyright": "",
+    "icon": "",
+    "name": "Shipfulness",
+    "version": "1.0.0"
+  },
+  "render": {
+    "aa": "x4",
+    "lighting": "soft",
+    "shadowAA": "off",
+    "shadows": "low"
+  },
+  "scenes": [
+    {
+      "enabled": true,
+      "name": "Main",
+      "path": "C:\\Users\\ucogl\\Desktop\\Proyects\\Semana de Preparacion\\Shipfulness\\Scenes\\Main.strscene"
+    },
+    {
+      "enabled": true,
+      "name": "Nivel_2",
+      "path": "C:\\Users\\ucogl\\Desktop\\Proyects\\Semana de Preparacion\\Shipfulness\\Scenes\\Nivel_2.strscene"
+    },
+    {
+      "enabled": true,
+      "name": "Nivel_3",
+      "path": "C:\\Users\\ucogl\\Desktop\\Proyects\\Semana de Preparacion\\Shipfulness\\Scenes\\Nivel_3.strscene"
+    }
+  ],
+  "window": {
+    "fullscreenToggle": true,
+    "height": 720,
+    "mode": "windowed",
+    "resizable": true,
+    "runInBackground": true,
+    "vsync": false,
+    "width": 1280
+  }
+}
