@@ -44,7 +44,7 @@
     {
       "enabled": true,
       "name": "Main",
-      "path": "C:\\Users\\ucogl\\Documents\\S.T.R.AC.E\\Proyectos Strace\\Shipfulness\\Scenes\\Main.strscene"
+      "path": "Scenes/Main.strscene"
     }
   ],
   "web": {

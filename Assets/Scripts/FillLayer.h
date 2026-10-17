@@ -246,15 +246,16 @@ private:
         // casas en cualquier Build. ListFiles es la misma carpeta en las dos
         // formas de existir (ver Engine/IO/FileSystem.h).
         //
-        // Y EN MINUSCULAS: lo que ListFiles devuelve del paquete son sus
-        // claves, que el paquete guarda normalizadas ("casa_61_42_3.strmesh"),
-        // mientras que del disco vuelve el nombre tal cual. Con el patron
-        // "Casa_" la segunda trampa era igual de silenciosa que la primera:
-        // cero casas en el Build y ningun error. Se compara y se ordena en
-        // minusculas, y la ruta se arma tambien en minusculas - el paquete y
-        // Windows no distinguen mayusculas, y asi el orden (y con el, que casa
-        // le toca a cada hueco con la misma semilla) es el mismo en el Editor
-        // y en el juego.
+        // Y EN MINUSCULAS: ListFiles devolvia del paquete sus claves, que el
+        // paquete guarda normalizadas ("casa_61_42_3.strmesh"), mientras que
+        // del disco volvia el nombre tal cual. Con el patron "Casa_" era la
+        // segunda trampa igual de silenciosa: cero casas en el Build y ningun
+        // error. El motor ya devuelve el nombre como se escribio, pero esto
+        // sigue comparando y ordenando en minusculas: el paquete y Windows no
+        // distinguen mayusculas, y un modelo renombrado "casa_..." por la mano
+        // de alguien no tiene que desaparecer del relleno. Y el orden (con el,
+        // que casa le toca a cada hueco con la misma semilla) es el mismo en
+        // el Editor y en el juego.
         const std::wstring dir = strace::SceneService::ProjectRoot() + L"/Assets/Modelos";
         for (const std::wstring& full : strace::FileSystem::ListFiles(dir)) {
             std::wstring n = std::filesystem::path(full).filename().wstring();
