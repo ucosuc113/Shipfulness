@@ -4,9 +4,14 @@
 #include "Engine/UI/UiService.h"
 #include "Engine/Input/InputService.h"
 
+// El fallback de Win32 (leer el cursor del sistema antes de que el motor
+// reparta su primer frame de entrada) no existe en web: alla la unica fuente
+// de entrada es InputService. Se compila solo donde hay Win32.
+#ifndef __EMSCRIPTEN__
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 #pragma comment(lib, "user32.lib")
+#endif
 
 #include <cstdio>
 #include <functional>
@@ -38,13 +43,15 @@ public:
     void Update(float uiW, float uiH) {
         const strace::InputFrame& f = strace::InputService::Actions().CurrentFrame();
         if (f.cursorInside || f.cursorX != 0.0f || f.cursorY != 0.0f) m_engine = true;
-        bool now;
+        bool now = false;
         if (m_engine) {
             x = f.cursorX;
             y = f.cursorY;
             wheel = f.wheelDelta;
             now = f.MouseButtonDown(strace::MouseButton::Left);
-        } else {
+        }
+#ifndef __EMSCRIPTEN__
+        else {
             POINT p{};
             GetCursorPos(&p);
             HWND h = GetForegroundWindow();
@@ -56,6 +63,7 @@ public:
             wheel = 0.0f;
             now = (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0 && h && GetForegroundWindow() == h;
         }
+#endif
         pressed = now && !down;
         released = !now && down;
         down = now;
@@ -178,6 +186,23 @@ public:
         bool clicked = hover && mouse.released && activeId == id;
         if (clicked) {
             value = !value;
+            if (sound) sound("click");
+        }
+        return clicked;
+    }
+
+    bool Cycle(int id, UiRect r, const std::string& label, int& value, const char* const* names, int count) {
+        bool hover = Hover(r);
+        if (hover) m_hoverNow = id;
+        if (hover && mouse.pressed) activeId = id;
+        Chamfer(r, 8 * m_s, hover ? kNavyLight : kNavy);
+        Text(r.x + 16 * m_s, r.y + (r.height - 7.0f * m_text) * 0.5f, label, kPaper);
+        UiRect box{r.Right() - 176 * m_s, r.y + r.height * 0.5f - 15 * m_s, 160 * m_s, 30 * m_s};
+        Chamfer(box, 6 * m_s, kOrange);
+        m_ui->AddTextCentered(box, names[value], kInk, m_text);
+        bool clicked = hover && mouse.released && activeId == id;
+        if (clicked) {
+            value = (value + 1) % count;
             if (sound) sound("click");
         }
         return clicked;

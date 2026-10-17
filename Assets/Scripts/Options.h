@@ -15,6 +15,7 @@ struct Options {
     bool cameraFollow = true;
     bool wheelAutoCenter = true;
     bool cameraShake = true;
+    int quality = 1;
     std::vector<float> best;
 
     static std::filesystem::path File() {
@@ -34,6 +35,7 @@ struct Options {
             else if (key == "camara") in >> cameraFollow;
             else if (key == "timon") in >> wheelAutoCenter;
             else if (key == "sacudida") in >> cameraShake;
+            else if (key == "calidad") in >> quality;
             else if (key == "record") {
                 size_t i;
                 float t;
@@ -48,7 +50,7 @@ struct Options {
         std::filesystem::create_directories(File().parent_path(), ec);
         std::ofstream out(File());
         out << "musica " << music << "\nefectos " << sfx << "\nfps " << showFps << "\ncamara " << cameraFollow
-            << "\ntimon " << wheelAutoCenter << "\nsacudida " << cameraShake << "\n";
+            << "\ntimon " << wheelAutoCenter << "\nsacudida " << cameraShake << "\ncalidad " << quality << "\n";
         for (size_t i = 0; i < best.size(); ++i)
             if (best[i] > 0.0f) out << "record " << i << " " << best[i] << "\n";
     }

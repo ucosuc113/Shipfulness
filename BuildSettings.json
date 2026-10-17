@@ -37,33 +37,33 @@
   "render": {
     "aa": "x4",
     "lighting": "soft",
-    "shadowAA": "off",
-    "shadows": "low"
+    "shadowAA": "x4",
+    "shadows": "high"
   },
   "scenes": [
     {
       "enabled": true,
       "name": "Main",
-      "path": "C:\\Users\\ucogl\\Desktop\\Proyects\\Semana de Preparacion\\Shipfulness\\Scenes\\Main.strscene"
-    },
-    {
-      "enabled": true,
-      "name": "Nivel_2",
-      "path": "C:\\Users\\ucogl\\Desktop\\Proyects\\Semana de Preparacion\\Shipfulness\\Scenes\\Nivel_2.strscene"
-    },
-    {
-      "enabled": true,
-      "name": "Nivel_3",
-      "path": "C:\\Users\\ucogl\\Desktop\\Proyects\\Semana de Preparacion\\Shipfulness\\Scenes\\Nivel_3.strscene"
+      "path": "C:\\Users\\ucogl\\Documents\\S.T.R.AC.E\\Proyectos Strace\\Shipfulness\\Scenes\\Main.strscene"
     }
   ],
+  "web": {
+    "embedHeight": 720,
+    "embedWidth": 1280,
+    "fullscreenButton": true,
+    "language": "en",
+    "outputDir": "Build/Web",
+    "runInBackground": true,
+    "startPrompt": "",
+    "zip": true
+  },
   "window": {
     "fullscreenToggle": true,
-    "height": 720,
+    "height": 1080,
     "mode": "windowed",
     "resizable": true,
     "runInBackground": true,
     "vsync": false,
-    "width": 1280
+    "width": 1920
   }
 }

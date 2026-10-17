@@ -1,8 +1,11 @@
 #pragma once
 
 #include "Shipfulness.h"
+#include "Engine/IO/FileSystem.h"
+#include "Engine/Diagnostics/Log.h"
 
 #include <cstdint>
+#include <cwctype>
 #include <filesystem>
 #include <unordered_map>
 #include <unordered_set>
@@ -71,20 +74,21 @@ public:
         m_destroyed.clear();
     }
 
-    void Update(const V2 quad[4], V2 focus, float dt) {
+    void SetLimit(int limit) { m_limit = limit; }
+
+    void Update(const V2 quad[4], V2 focus, float dt, bool sunShadows) {
         for (size_t i = 0; i < m_entries.size(); ++i) {
             Entry& e = m_entries[i];
             if (e.fall < 0.0f) continue;
             e.fall += dt;
-            float t = Clamp(e.fall / 2.2f, 0.0f, 1.0f);
-            float k = t * t * (3.0f - 2.0f * t);
+            float t = Clamp(e.fall / kToppleTime, 0.0f, 1.0f);
             strace::GameObject* n = m_nodes[i];
-            float lx = Dot(e.push, Right(e.slot.yaw)), lz = Dot(e.push, Forward(e.slot.yaw));
-            n->transform.position[0] = e.slot.pos.x + e.push.x * k * 2.0f;
-            n->transform.position[2] = e.slot.pos.z + e.push.z * k * 2.0f;
-            n->transform.position[1] = -5.5f * k * k;
-            n->transform.rotation[0] = lz * 38.0f * k;
-            n->transform.rotation[2] = -lx * 38.0f * k;
+            Topple tp = ToppleAt(e.fall, e.push, e.slot.yaw);
+            n->transform.position[0] = e.slot.pos.x + tp.dx;
+            n->transform.position[2] = e.slot.pos.z + tp.dz;
+            n->transform.position[1] = tp.dy;
+            n->transform.rotation[0] = tp.rx;
+            n->transform.rotation[2] = tp.rz;
             if (t >= 1.0f) {
                 m_assigned.erase(e.slot.key);
                 e = {};
@@ -119,7 +123,8 @@ public:
                     if (in) m_wanted.push_back({Dot(s.pos - focus, s.pos - focus), &s});
                 }
         std::sort(m_wanted.begin(), m_wanted.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
-        if (m_wanted.size() > m_nodes.size()) m_wanted.resize(m_nodes.size());
+        size_t cap = std::min(m_nodes.size(), static_cast<size_t>(std::max(0, m_limit)));
+        if (m_wanted.size() > cap) m_wanted.resize(cap);
         m_keep.clear();
         for (const auto& w : m_wanted) m_keep.insert(w.second->key);
         for (size_t i = 0; i < m_entries.size(); ++i) {
@@ -154,6 +159,12 @@ public:
             n->transform.rotation[1] = e.slot.yaw * kDeg;
             n->transform.rotation[2] = 0.0f;
             n->active = true;
+            // La sombra del SOL (ver Cull en SceneLink: no hay lamparas, y la de
+            // lamparas no hacia nada). El islote no proyecta: esta a ras de
+            // agua y solo oscureceria su propio halo de espuma.
+            n->castSunShadows = sunShadows;
+            for (auto& c : n->children)
+                if (c) c->castSunShadows = false;
             m_assigned[e.slot.key] = static_cast<int>(free);
         }
     }
@@ -176,6 +187,11 @@ public:
         Entry& e = m_entries[static_cast<size_t>(it->second)];
         e.fall = 0.0f;
         e.push = Norm(push);
+    }
+
+    strace::GameObject* NodeFor(long long key) const {
+        auto it = m_assigned.find(key);
+        return it == m_assigned.end() ? nullptr : m_nodes[static_cast<size_t>(it->second)];
     }
 
     int Destroyed() const { return static_cast<int>(m_destroyed.size()); }
@@ -208,6 +224,7 @@ private:
     std::vector<std::pair<V2, float>> m_basins;
     std::vector<std::pair<V2, V2>> m_seas;
     uint64_t m_seed = 1;
+    int m_limit = 320;
     float m_timer = 0.0f;
 
     static long long Pack(int x, int z) {
@@ -222,19 +239,39 @@ private:
     }
 
     void ScanMeshes() {
-        namespace fs = std::filesystem;
-        std::error_code ec;
-        fs::path dir = fs::path(strace::SceneService::ProjectRoot()) / L"Assets" / L"Modelos";
-        for (auto& e : fs::directory_iterator(dir, ec)) {
-            std::wstring n = e.path().filename().wstring();
+        // Por FileSystem y no por std::filesystem: en un Build los modelos no
+        // estan sueltos en el disco sino dentro del paquete, y
+        // directory_iterator no sabe de paquetes. Con el, esto funcionaba en
+        // el Editor (donde la carpeta existe de verdad) y entregaba CERO
+        // casas en cualquier Build. ListFiles es la misma carpeta en las dos
+        // formas de existir (ver Engine/IO/FileSystem.h).
+        //
+        // Y EN MINUSCULAS: lo que ListFiles devuelve del paquete son sus
+        // claves, que el paquete guarda normalizadas ("casa_61_42_3.strmesh"),
+        // mientras que del disco vuelve el nombre tal cual. Con el patron
+        // "Casa_" la segunda trampa era igual de silenciosa que la primera:
+        // cero casas en el Build y ningun error. Se compara y se ordena en
+        // minusculas, y la ruta se arma tambien en minusculas - el paquete y
+        // Windows no distinguen mayusculas, y asi el orden (y con el, que casa
+        // le toca a cada hueco con la misma semilla) es el mismo en el Editor
+        // y en el juego.
+        const std::wstring dir = strace::SceneService::ProjectRoot() + L"/Assets/Modelos";
+        for (const std::wstring& full : strace::FileSystem::ListFiles(dir)) {
+            std::wstring n = std::filesystem::path(full).filename().wstring();
+            for (wchar_t& c : n) c = static_cast<wchar_t>(std::towlower(static_cast<wint_t>(c)));
             int w = 0, d = 0;
             wchar_t tag[64] = {};
-            if (e.path().extension() != L".strmesh" || std::swscanf(n.c_str(), L"Casa_%d_%d_%63[^.]", &w, &d, tag) != 3) continue;
-            std::wstring island = L"Islote_" + std::wstring(tag) + L".strmesh";
+            if (n.size() < 8 || n.compare(n.size() - 8, 8, L".strmesh") != 0 ||
+                std::swscanf(n.c_str(), L"casa_%d_%d_%63[^.]", &w, &d, tag) != 3)
+                continue;
+            std::wstring island = L"islote_" + std::wstring(tag) + L".strmesh";
             m_meshes.push_back({w / 10.0f, d / 10.0f, L"Assets/Modelos/" + n,
-                                fs::exists(dir / island, ec) ? L"Assets/Modelos/" + island : std::wstring()});
+                                strace::FileSystem::Exists(dir + L"/" + island) ? L"Assets/Modelos/" + island
+                                                                                : std::wstring()});
         }
         std::sort(m_meshes.begin(), m_meshes.end(), [](const HouseMesh& a, const HouseMesh& b) { return a.path < b.path; });
+        strace::Log::Info(L"Relleno: " + std::to_wstring(m_meshes.size()) + L" modelos de casa.");
+        if (m_meshes.empty()) strace::Log::Warn(L"Relleno: no hay modelos Casa_*.strmesh en Assets/Modelos; no se generara nada.");
     }
 
     float Clearance(V2 p) const {

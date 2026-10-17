@@ -1,3 +1,14 @@
-/Minimal Engine
-/.claude
+# Lo que el motor genera: el juego compilado, los intermedios del Build y del
+# multi-play, y la disposicion de ventanas del Editor.
+/Build/
+/Intermediate/
+imgui.ini
+.strace-editor.lock
+
+# El motor no viaja con el juego (ver README).
+/Minimal Engine/
+/web/
+
+# Local
+/.claude/
 SHIPFULNESS_concepto.md

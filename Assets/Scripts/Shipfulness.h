@@ -50,6 +50,32 @@ inline float DampAngle(float a, float b, float lambda, float dt) {
     return a + WrapAngle(b - a) * (1.0f - std::exp(-lambda * dt));
 }
 
+struct Topple {
+    float dx = 0.0f, dy = 0.0f, dz = 0.0f, rx = 0.0f, rz = 0.0f, tip = 0.0f;
+};
+
+constexpr float kToppleTime = 2.8f;
+
+inline Topple ToppleAt(float t, V2 push, float yaw) {
+    float lx = Dot(push, Right(yaw)), lz = Dot(push, Forward(yaw));
+    float jolt = 1.0f - std::exp(-14.0f * t);
+    float wobble = std::sin(std::min(t * 20.0f, kPi)) * std::exp(-3.0f * t);
+    float tip = Clamp((t - 0.1f) / 1.4f, 0.0f, 1.0f);
+    tip = tip * tip;
+    float sink = Clamp((t - 0.4f) / 2.2f, 0.0f, 1.0f);
+    sink = sink * sink * (3.0f - 2.0f * sink);
+    float angle = 9.0f * wobble + 80.0f * tip;
+    float slide = 0.8f * jolt + 2.6f * tip;
+    Topple o;
+    o.dx = push.x * slide;
+    o.dz = push.z * slide;
+    o.dy = -1.0f * tip - 7.5f * sink;
+    o.rx = lz * angle;
+    o.rz = -lx * angle;
+    o.tip = tip;
+    return o;
+}
+
 struct Obb {
     V2 center;
     V2 axisX{1.0f, 0.0f};
@@ -154,6 +180,12 @@ private:
     bool m_prev[256] = {};
 };
 
+// Un circulo de la colision del barco, en coordenadas del barco (x a
+// estribor, z a proa). Ver ShipState::circles y HullDamage::Outline.
+struct HullCircle {
+    float x = 0.0f, z = 0.0f, r = 1.0f;
+};
+
 struct ShipState {
     strace::GameObject* node = nullptr;
     V2 pos;
@@ -166,10 +198,18 @@ struct ShipState {
     float rudder = 0.0f;
     float radius = 1.8f;
     float scrape = 0.0f;
+    // El barco SANO como fila de circulos iguales sobre la quilla: es la
+    // medida de "esta dentro de la meta", que no tiene que cambiar porque el
+    // casco este roto.
     std::vector<float> circleOffsets;
+    // Con lo que CHOCA el barco: el casco que sigue en pie (HullDamage::Outline).
+    // Sano es casi la fila de arriba con la proa en punta; roto, los circulos
+    // se achican y se corren hacia lo que queda de chapa.
+    std::vector<HullCircle> circles;
 
     float ForwardSpeed() const { return Dot(vel, Forward(yaw)); }
     V2 CirclePos(size_t i) const { return pos + Forward(yaw) * circleOffsets[i]; }
+    V2 HullPoint(float x, float z) const { return pos + Right(yaw) * x + Forward(yaw) * z; }
 };
 
 }
