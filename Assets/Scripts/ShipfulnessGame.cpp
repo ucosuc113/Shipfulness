@@ -15,6 +15,8 @@
 #include <chrono>
 #include <cstdlib>
 #include <cstring>
+#include <string>
+#include <vector>
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
@@ -556,10 +558,55 @@ private:
 
     void Dim(float a) { m_ui.Rect({0, 0, m_ui.W(), m_ui.H()}, UiColor{0.06f, 0.14f, 0.22f, a}); }
 
+    // EL AIRE DE UNA PANTALLA. Todas las de abajo se miden con px(diseno,
+    // apretado): la medida del diseno de 720 filas cuando sobra lugar (k = 1)
+    // y la mas apretada que todavia se lee cuando no (k = 0), ya en pixeles.
+    // Ui::Fit elige k para que la pantalla entre en la ventana que haya - el
+    // embed de 640x360 de itch.io, un monitor 4K o una ventana angosta - sin
+    // achicar el texto mientras se pueda. Antes cada medida era fija contra
+    // 720 filas, y por debajo de ~500 el menu y los paneles se cortaban.
+    static float Air(float design, float tight, float k, float s) { return Lerp(tight, design, k) * s; }
+
     void DrawMainMenu() {
-        float s = m_ui.S(), W = m_ui.W(), H = m_ui.H();
-        float cw = std::min(420 * s, W * 0.42f);
-        float x = std::max(40 * s, W * 0.05f);
+        UiFitScope scope{m_ui};
+        float W = m_ui.W(), H = m_ui.H();
+        float s = 1, k = 1, cw = 0, x = 0, titleH = 0, subH = 0, smallH = 0, titleW = 0;
+        int t = 2, small = 1, titleScale = 2;
+        auto px = [&](float design, float tight) { return Air(design, tight, k, s); };
+        auto measure = [&](float kk) {
+            k = kk;
+            s = m_ui.S();
+            t = m_ui.T();
+            small = std::max(1, t - 1);
+            subH = 7.0f * t;
+            smallH = 7.0f * small;
+            x = std::round(std::max(px(40, 16), W * 0.05f));
+            // La columna no baja del ancho de su renglon mas largo: con la
+            // fuente a escala entera, el texto no se encoge con la columna.
+            float sub = static_cast<float>(strace::MeasureTextWidth("A CANAL FAR TOO NARROW.", t));
+            cw = std::min(420 * s, std::max(W * 0.42f, sub));
+            titleScale = std::max(2, static_cast<int>(cw / static_cast<float>(strace::MeasureTextWidth("SHIPFULNESS", 1))));
+            titleH = 7.0f * titleScale;
+            titleW = static_cast<float>(strace::MeasureTextWidth("SHIPFULNESS", titleScale));
+        };
+        auto nameY = [&] { return px(14, 8); };
+        auto subtitleY = [&] { return nameY() + subH + px(14, 5); };
+        auto cardH = [&] { return subtitleY() + smallH + px(23, 8); };
+        auto buttonH = [&] { return std::max(px(52, 40), 7.0f * (t + 1) + 8 * s); };
+        auto gap = [&] { return px(12, 5); };
+        auto column = [&] {
+            return titleH + px(18, 6) + 9 * s + px(14, 5) + subH * 2 + px(10, 4) + px(34, 10) + cardH() + px(24, 8) +
+                   4 * buttonH() + 3 * gap();
+        };
+        // Arriba un margen; abajo la linea de atajos y su propio margen.
+        auto top = [&] { return px(24, 10); };
+        auto bottom = [&] { return smallH + px(30, 8) + px(14, 6); };
+        k = m_ui.Fit(H, [&](float kk) {
+            measure(kk);
+            return top() + column() + bottom();
+        });
+        measure(k);
+
         // EL FONDO DE LA COLUMNA: casi opaco detras del menu y un borde en
         // cuatro escalones, como las esquinas de los paneles. Era un degradado
         // de 32 tiras de 0,78 a 0, y en su mitad (alfa 0,3-0,6) las casas
@@ -575,37 +622,33 @@ private:
             for (int i = 0; i < 4; ++i)
                 m_ui.Rect({solid + step * i, 0, step, H}, UiColor{veil.r, veil.g, veil.b, steps[i]});
         }
-        int titleScale = std::max(2, static_cast<int>(cw / static_cast<float>(strace::MeasureTextWidth("SHIPFULNESS", 1))));
-        float titleH = 7.0f * titleScale;
-        float subH = 7.0f * m_ui.T();
-        float cardH = 72 * s, bh = 52 * s, gap = 12 * s;
-        float total = titleH + 18 * s + 6 * s + 14 * s + subH * 2 + 10 * s + 34 * s + cardH + 24 * s + 4 * bh + 3 * gap;
-        float y = std::max(24 * s, (H - total) * 0.45f);
+        // Lo que sobra de alto se reparte como antes: un poco mas abajo que
+        // arriba (0,45), para que la columna no flote pegada al techo.
+        float y = top() + std::max(0.0f, (H - top() - column() - bottom()) * 0.45f);
         float bob = std::sin(m_time * 1.2f) * 2 * s;
         m_ui.Text(x + 4 * s, y + bob + 5 * s, "SHIPFULNESS", kNavyDark, titleScale);
         m_ui.Text(x, y + bob, "SHIPFULNESS", kPaper, titleScale);
-        y += titleH + 18 * s;
-        float titleW = static_cast<float>(strace::MeasureTextWidth("SHIPFULNESS", titleScale));
+        y += titleH + px(18, 6);
         m_ui.Rect({x, y, titleW, 6 * s}, kOrange);
         m_ui.Rect({x, y + 6 * s, titleW, 3 * s}, kOrangeDark);
-        y += 6 * s + 14 * s;
+        y += 9 * s + px(14, 5);
         m_ui.Text(x, y, "A SHIP FAR TOO LONG.", kPaper);
-        y += subH + 10 * s;
+        y += subH + px(10, 4);
         m_ui.Text(x, y, "A CANAL FAR TOO NARROW.", kOrange);
-        y += subH + 34 * s;
-        UiRect card{x, y, cw, cardH};
+        y += subH + px(34, 10);
+        UiRect card{x, y, cw, cardH()};
         m_ui.Panel(card, kNavyDark);
-        m_ui.Rect({card.x + 10 * s, card.y + 12 * s, 6 * s, card.height - 24 * s}, kOrange);
-        m_ui.Text(card.x + 30 * s, card.y + 14 * s, Level().name, kPaper);
-        int small = std::max(1, m_ui.T() - 1);
-        m_ui.Draw().AddText(card.x + 30 * s, card.y + 42 * s, Level().subtitle, kSteel, small);
+        m_ui.Rect({card.x + 10 * s, card.y + px(12, 6), 6 * s, card.height - 2 * px(12, 6)}, kOrange);
+        m_ui.Text(card.x + 30 * s, card.y + nameY(), Level().name, kPaper);
+        m_ui.Draw().AddText(card.x + 30 * s, card.y + subtitleY(), Level().subtitle, kSteel, small);
         float best = m_opts.best[static_cast<size_t>(m_levelIndex)];
         if (best > 0.0f) {
             char buf[32];
             std::snprintf(buf, sizeof(buf), "%d:%05.2f", static_cast<int>(best) / 60, std::fmod(best, 60.0f));
-            m_ui.TextRight(card.Right() - 18 * s, card.y + 14 * s, buf, kGreen);
+            m_ui.TextRight(card.Right() - 18 * s, card.y + nameY(), buf, kGreen);
         }
-        y += cardH + 24 * s;
+        y += card.height + px(24, 8);
+        float bh = buttonH();
         UiRect play{x, y, cw, bh};
         if (m_ui.Button(1, play, "SET SAIL", true)) StartRun();
         // El timon en PIXELES, como la fuente: un aro octogonal en escalera
@@ -618,45 +661,67 @@ private:
         {
             // Seis radios (tres diametros) que asoman del aro como las cabillas
             // de un timon de verdad: con tres radios gruesos desde el centro
-            // el icono se leia como el triangulo de "play".
-            float px = std::max(2.0f, std::round(2 * s));
+            // el icono se leia como el triangulo de "play". El radio sigue al
+            // alto del boton, que con poco aire es mas bajo que el diseno.
+            float px2 = std::max(2.0f, std::round(2 * s));
+            float ring = std::min(12 * s, bh * 0.25f), spoke = std::min(16 * s, bh * 0.33f);
             UiColor face = m_ui.Hover(play) ? kOrangeLight : kOrange;
-            m_ui.FilledOctagon(wx, wy, 12 * s, kInk);
-            m_ui.FilledOctagon(wx, wy, 12 * s - px * 1.6f, face);
-            for (int k = 0; k < 3; ++k) {
-                float a = m_time * 0.6f + k * kPi / 3.0f;
-                for (float r = -16 * s; r <= 16 * s; r += px) {
-                    float cx = std::round((wx + std::cos(a) * r) / px) * px, cy = std::round((wy + std::sin(a) * r) / px) * px;
-                    m_ui.Rect({cx - px * 0.5f, cy - px * 0.5f, px, px}, kInk);
+            m_ui.FilledOctagon(wx, wy, ring, kInk);
+            m_ui.FilledOctagon(wx, wy, ring - px2 * 1.6f, face);
+            for (int i = 0; i < 3; ++i) {
+                float a = m_time * 0.6f + i * kPi / 3.0f;
+                for (float r = -spoke; r <= spoke; r += px2) {
+                    float cx = std::round((wx + std::cos(a) * r) / px2) * px2, cy = std::round((wy + std::sin(a) * r) / px2) * px2;
+                    m_ui.Rect({cx - px2 * 0.5f, cy - px2 * 0.5f, px2, px2}, kInk);
                 }
             }
-            m_ui.Rect({wx - px, wy - px, px * 2, px * 2}, kInk);
+            m_ui.Rect({wx - px2, wy - px2, px2 * 2, px2 * 2}, kInk);
         }
-        y += bh + gap;
+        y += bh + gap();
         if (m_ui.Button(2, {x, y, cw, bh}, "OPTIONS")) {
             m_optionsReturn = Screen::MainMenu;
             m_screen = Screen::Options;
         }
-        y += bh + gap;
+        y += bh + gap();
         if (m_ui.Button(3, {x, y, cw, bh}, "HOW TO PLAY")) m_screen = Screen::HowTo;
-        y += bh + gap;
+        y += bh + gap();
         if (m_ui.Button(4, {x, y, cw, bh}, "QUIT")) Quit();
         if (m_keys.Pressed(0x0D) || m_keys.Pressed(0x20)) StartRun();
-        m_ui.Draw().AddText(x, H - 30 * s, "MOUSE: THROTTLE, WHEEL AND HORN   -   ENTER: SET SAIL", kSteel, small);
+        float hintY = H - smallH - px(30, 8);
+        m_ui.Draw().AddText(x, hintY, "MOUSE: THROTTLE, WHEEL AND HORN   -   ENTER: SET SAIL", kSteel, small);
         // La version a secas, la misma de BuildSettings ("product.version"):
         // "PROTOTYPE" en la portada era lo primero que hacia leer el juego como
         // una prueba, y el menu es su escaparate.
-        m_ui.TextRight(W - 24 * s, H - 30 * s, "V1.0", kSteel, small);
+        m_ui.TextRight(W - px(24, 10), hintY, "V1.0", kSteel, small);
     }
 
     void DrawOptions() {
         if (m_optionsReturn == Screen::Paused) DrawHudStats();
         Dim(0.45f);
-        float s = m_ui.S(), W = m_ui.W(), H = m_ui.H();
-        UiRect p{W * 0.5f - 290 * s, H * 0.5f - 300 * s, 580 * s, 600 * s};
+        UiFitScope scope{m_ui};
+        float W = m_ui.W(), H = m_ui.H();
+        m_ui.FitWidth(612 * m_ui.S());
+        float s = 1, k = 1;
+        int t = 2;
+        auto px = [&](float design, float tight) { return Air(design, tight, k, s); };
+        auto rowH = [&] { return std::max(px(50, 36), 7.0f * t + 12 * s); };
+        auto backH = [&] { return std::max(px(50, 38), 7.0f * (t + 1) + 8 * s); };
+        auto panelH = [&] {
+            return px(22, 12) + 14.0f * t + px(32, 12) + 7 * rowH() + 6 * px(10, 4) + px(20, 10) + backH() + px(38, 14);
+        };
+        k = m_ui.Fit(H, [&](float kk) {
+            k = kk;
+            s = m_ui.S();
+            t = m_ui.T();
+            return panelH() + 2 * px(24, 8);
+        });
+        s = m_ui.S();
+        t = m_ui.T();
+        float ph = panelH();
+        UiRect p{std::round(W * 0.5f - 290 * s), std::round(H * 0.5f - ph * 0.5f), 580 * s, ph};
         m_ui.Panel(p);
-        m_ui.TextCentered(W * 0.5f, p.y + 22 * s, "OPTIONS", kOrange, m_ui.T() * 2);
-        float x = p.x + 30 * s, y = p.y + 82 * s, w = p.width - 60 * s, h = 50 * s, g = 10 * s;
+        m_ui.TextCentered(W * 0.5f, p.y + px(22, 12), "OPTIONS", kOrange, t * 2);
+        float x = p.x + 30 * s, y = p.y + px(22, 12) + 14.0f * t + px(32, 12), w = p.width - 60 * s, h = rowH(), g = px(10, 4);
         if (m_ui.Slider(10, {x, y, w, h}, "MUSIC", m_opts.music)) ApplyOptions();
         y += h + g;
         if (m_ui.Slider(11, {x, y, w, h}, "SOUND EFFECTS", m_opts.sfx)) ApplyOptions();
@@ -671,8 +736,8 @@ private:
         y += h + g;
         static const char* const kQuality[3] = {"LOW", "MEDIUM", "HIGH"};
         if (m_ui.Cycle(17, {x, y, w, h}, "GRAPHICS", m_opts.quality, kQuality, 3)) ApplyOptions();
-        y += h + g * 2;
-        if (m_ui.Button(16, {W * 0.5f - 130 * s, y, 260 * s, 50 * s}, "BACK", true) || EscPressed()) {
+        y += h + px(20, 10);
+        if (m_ui.Button(16, {W * 0.5f - 130 * s, y, 260 * s, backH()}, "BACK", true) || EscPressed()) {
             m_opts.Save();
             m_screen = m_optionsReturn;
         }
@@ -680,11 +745,9 @@ private:
 
     void DrawHowTo() {
         Dim(0.45f);
-        float s = m_ui.S(), W = m_ui.W(), H = m_ui.H();
-        UiRect p{W * 0.5f - 380 * s, H * 0.5f - 280 * s, 760 * s, 560 * s};
-        m_ui.Panel(p);
-        m_ui.TextCentered(W * 0.5f, p.y + 22 * s, "HOW TO PLAY", kOrange, m_ui.T() * 2);
-        const char* lines[] = {
+        UiFitScope scope{m_ui};
+        float W = m_ui.W(), H = m_ui.H();
+        static const char* const kLines[] = {
             "DRAG THE LEVER: ENGINES AHEAD OR ASTERN",
             "DRAG THE WHEEL IN A CIRCLE TO STEER",
             "CLICK THE ROUND BUTTON: HORN",
@@ -699,12 +762,43 @@ private:
             "",
             "KEYBOARD: W S ENGINES  A D WHEEL  H HORN  ESC PAUSE",
         };
-        float y = p.y + 80 * s;
-        for (const char* l : lines) {
-            m_ui.Text(p.x + 36 * s, y, l, l[0] == 'K' && l[1] == 'E' ? kSteel : kPaper);
-            y += 28 * s;
+        float s = 1, k = 1, pw = 0;
+        int t = 2;
+        // Los renglones se PARTEN al ancho del panel: a escala 2 el mas largo
+        // mide 636 px y el panel de 760 al 75% deja 516 adentro - se salia
+        // por el borde aun en las ventanas donde el alto alcanzaba.
+        std::vector<std::vector<std::string>> wrapped;
+        auto px = [&](float design, float tight) { return Air(design, tight, k, s); };
+        auto pitch = [&] { return Lerp(7.0f * t + 4 * s, std::max(28 * s, 7.0f * t + 4 * s), k); };
+        auto backH = [&] { return std::max(px(50, 38), 7.0f * (t + 1) + 8 * s); };
+        auto measure = [&](float kk) {
+            k = kk;
+            s = m_ui.S();
+            t = m_ui.T();
+            pw = std::min(760 * s, W - 2 * px(24, 8));
+            wrapped.clear();
+            int inner = static_cast<int>(pw - 72 * s);
+            for (const char* l : kLines) wrapped.push_back(l[0] ? strace::WrapText(l, inner, t) : std::vector<std::string>{});
+            float body = 0;
+            for (const auto& w : wrapped) body += w.empty() ? px(28, 8) : pitch() * static_cast<float>(w.size());
+            return px(22, 12) + 14.0f * t + px(30, 14) + body + px(46, 10) + backH() + px(20, 14);
+        };
+        k = m_ui.Fit(H, [&](float kk) { return measure(kk) + 2 * px(24, 8); });
+        float ph = measure(k);
+        UiRect p{std::round(W * 0.5f - pw * 0.5f), std::round(H * 0.5f - ph * 0.5f), pw, ph};
+        m_ui.Panel(p);
+        m_ui.TextCentered(W * 0.5f, p.y + px(22, 12), "HOW TO PLAY", kOrange, t * 2);
+        float y = p.y + px(22, 12) + 14.0f * t + px(30, 14);
+        for (size_t i = 0; i < wrapped.size(); ++i) {
+            if (wrapped[i].empty()) y += px(28, 8);
+            bool keys = std::strncmp(kLines[i], "KEYBOARD", 8) == 0;
+            for (const std::string& l : wrapped[i]) {
+                m_ui.Text(p.x + 36 * s, y, l, keys ? kSteel : kPaper);
+                y += pitch();
+            }
         }
-        if (m_ui.Button(20, {W * 0.5f - 130 * s, p.Bottom() - 70 * s, 260 * s, 50 * s}, "BACK", true) || EscPressed())
+        float bh = backH();
+        if (m_ui.Button(20, {W * 0.5f - 130 * s, p.Bottom() - px(20, 14) - bh, 260 * s, bh}, "BACK", true) || EscPressed())
             m_screen = Screen::MainMenu;
     }
 
@@ -717,55 +811,79 @@ private:
     // que decia ya esta en la tarjeta.
     void DrawPause() {
         Dim(0.62f);
-        float s = m_ui.S(), W = m_ui.W(), H = m_ui.H();
-        int t = m_ui.T(), small = std::max(1, t - 1);
-        float bh = 50 * s, gap = 12 * s;
-        float pw = 460 * s, ph = 152 * s + 4 * bh + 3 * gap + 74 * s;
+        UiFitScope scope{m_ui};
+        float W = m_ui.W(), H = m_ui.H();
+        m_ui.FitWidth(492 * m_ui.S());
+        float s = 1, k = 1;
+        int t = 2, small = 1;
+        auto px = [&](float design, float tight) { return Air(design, tight, k, s); };
+        auto bh = [&] { return std::max(px(50, 36), 7.0f * (t + 1) + 8 * s); };
+        auto gap = [&] { return px(12, 5); };
+        // Dentro de la tarjeta: el nivel arriba, el reloj debajo.
+        auto nameY = [&] { return px(12, 6); };
+        auto timeY = [&] { return nameY() + 7.0f * small + px(13, 4); };
+        auto cardH = [&] { return timeY() + 7.0f * t + px(16, 6); };
+        auto panelH = [&] {
+            return px(22, 10) + 21.0f * t + px(10, 4) + 7 * s + px(20, 8) + cardH() + px(20, 8) + 4 * bh() + 3 * gap() + px(22, 8) +
+                   7.0f * small + px(14, 8);
+        };
+        k = m_ui.Fit(H, [&](float kk) {
+            k = kk;
+            s = m_ui.S();
+            t = m_ui.T();
+            small = std::max(1, t - 1);
+            return panelH() + 2 * px(24, 8);
+        });
+        s = m_ui.S();
+        t = m_ui.T();
+        small = std::max(1, t - 1);
+        float pw = 460 * s, ph = panelH();
         UiRect p{std::round(W * 0.5f - pw * 0.5f), std::round(H * 0.5f - ph * 0.5f), pw, ph};
         m_ui.Panel(p, kNavyDark);
 
         // Titulo y su barra, como "SHIPFULNESS" en el menu.
-        float y = p.y + 22 * s;
+        float y = p.y + px(22, 10);
         m_ui.TextCentered(W * 0.5f, y, "PAUSED", kPaper, t * 3);
-        y += 21.0f * t + 10 * s;
+        y += 21.0f * t + px(10, 4);
         float tw = static_cast<float>(strace::MeasureTextWidth("PAUSED", t * 3));
         m_ui.Rect({std::round(W * 0.5f - tw * 0.5f), y, tw, 5 * s}, kOrange);
         m_ui.Rect({std::round(W * 0.5f - tw * 0.5f), y + 5 * s, tw, 2 * s}, kOrangeDark);
-        y += 20 * s;
+        y += 7 * s + px(20, 8);
 
         // La tarjeta de la partida.
         float x = p.x + 30 * s, w = p.width - 60 * s;
-        UiRect card{x, y, w, 62 * s};
+        UiRect card{x, y, w, cardH()};
         m_ui.Chamfer(card, 8 * s, kNavy);
-        m_ui.Rect({card.x + 10 * s, card.y + 12 * s, 5 * s, card.height - 24 * s}, kOrange);
-        m_ui.Draw().AddText(card.x + 26 * s, card.y + 12 * s, Level().name, kOrange, small);
+        m_ui.Rect({card.x + 10 * s, card.y + nameY(), 5 * s, card.height - 2 * nameY()}, kOrange);
+        m_ui.Draw().AddText(card.x + 26 * s, card.y + nameY(), Level().name, kOrange, small);
         char buf[64];
         std::snprintf(buf, sizeof(buf), "%d:%05.2f / %d:%02d", static_cast<int>(m_raceTime) / 60, std::fmod(m_raceTime, 60.0f),
                       static_cast<int>(Level().parTime) / 60, static_cast<int>(Level().parTime) % 60);
-        m_ui.Text(card.x + 26 * s, card.y + 32 * s, buf, m_raceTime > Level().parTime ? kOrange : kPaper);
+        m_ui.Text(card.x + 26 * s, card.y + timeY(), buf, m_raceTime > Level().parTime ? kOrange : kPaper);
         int stage = m_health.Stage();
         UiColor hc = stage >= 2 ? kRed : (stage == 1 ? kOrange : kPaper);
         float blk = std::round(9 * s), bgap = std::max(1.0f, std::round(2 * s));
         float bx = card.Right() - 16 * s - 10 * (blk + bgap);
         int lit = static_cast<int>(std::ceil(m_health.Percent() / 10.0f));
-        m_ui.Draw().AddText(bx, card.y + 12 * s, "HULL", kSteel, small);
-        for (int i = 0; i < 10; ++i) m_ui.Rect({bx + i * (blk + bgap), card.y + 34 * s, blk, blk}, i < lit ? hc : kNavyDark);
+        m_ui.Draw().AddText(bx, card.y + nameY(), "HULL", kSteel, small);
+        for (int i = 0; i < 10; ++i) m_ui.Rect({bx + i * (blk + bgap), card.y + timeY() + 2 * s, blk, blk}, i < lit ? hc : kNavyDark);
         std::snprintf(buf, sizeof(buf), "HOUSES %d", m_link.Destroyed());
-        m_ui.Draw().AddText(card.Right() - 16 * s - static_cast<float>(strace::MeasureTextWidth(buf, small)), card.y + 12 * s, buf,
+        m_ui.Draw().AddText(card.Right() - 16 * s - static_cast<float>(strace::MeasureTextWidth(buf, small)), card.y + nameY(), buf,
                             kSteel, small);
-        y += card.height + 20 * s;
+        y += card.height + px(20, 8);
 
-        if (m_ui.Button(30, {x, y, w, bh}, "RESUME", true) || (!m_justPaused && (EscPressed() || m_keys.Pressed('P')))) m_screen = Screen::Playing;
-        y += bh + gap;
-        if (m_ui.Button(31, {x, y, w, bh}, "RETRY") || (!m_justPaused && m_keys.Pressed('R'))) StartRun();
-        y += bh + gap;
-        if (m_ui.Button(32, {x, y, w, bh}, "OPTIONS")) {
+        float h = bh();
+        if (m_ui.Button(30, {x, y, w, h}, "RESUME", true) || (!m_justPaused && (EscPressed() || m_keys.Pressed('P')))) m_screen = Screen::Playing;
+        y += h + gap();
+        if (m_ui.Button(31, {x, y, w, h}, "RETRY") || (!m_justPaused && m_keys.Pressed('R'))) StartRun();
+        y += h + gap();
+        if (m_ui.Button(32, {x, y, w, h}, "OPTIONS")) {
             m_optionsReturn = Screen::Paused;
             m_screen = Screen::Options;
         }
-        y += bh + gap;
-        if (m_ui.Button(33, {x, y, w, bh}, "MAIN MENU")) GoMenu();
-        y += bh + 22 * s;
+        y += h + gap();
+        if (m_ui.Button(33, {x, y, w, h}, "MAIN MENU")) GoMenu();
+        y += h + px(22, 8);
         m_ui.Draw().AddText(W * 0.5f - static_cast<float>(strace::MeasureTextWidth("ESC / P: RESUME     R: RETRY", small)) * 0.5f, y,
                             "ESC / P: RESUME     R: RETRY", kSteel, small);
     }
@@ -780,31 +898,61 @@ private:
     }
 
     void DrawResults() {
-        float s = m_ui.S(), W = m_ui.W(), H = m_ui.H();
-        UiRect p{W * 0.5f - 260 * s, H * 0.5f - 230 * s, 520 * s, 460 * s};
-        m_ui.Panel(p);
-        m_ui.TextCentered(W * 0.5f, p.y + 22 * s, m_sunk ? "SHIPWRECKED!" : "YOU MADE IT!", m_sunk ? kRed : kGreen, m_ui.T() * 3);
-        for (int i = 0; i < 3; ++i) {
-            float cx = W * 0.5f + (i - 1) * 74 * s, cy = p.y + 120 * s;
-            m_ui.FilledOctagon(cx + 3 * s, cy + 4 * s, 26 * s, kNavyDark);
-            m_ui.FilledOctagon(cx, cy, 26 * s, !m_sunk && i < m_stars ? kOrange : kSteelDark);
-        }
+        UiFitScope scope{m_ui};
+        float W = m_ui.W(), H = m_ui.H();
         int houses = m_link.Destroyed();
-        char buf[96];
-        float y = p.y + 170 * s;
-        std::snprintf(buf, sizeof(buf), "TIME  %d:%05.2f%s", static_cast<int>(m_raceTime) / 60, std::fmod(m_raceTime, 60.0f),
+        const char* title = m_sunk ? "SHIPWRECKED!" : "YOU MADE IT!";
+        char lines[4][96];
+        std::snprintf(lines[0], sizeof(lines[0]), "TIME  %d:%05.2f%s", static_cast<int>(m_raceTime) / 60, std::fmod(m_raceTime, 60.0f),
                       m_newBest && !m_sunk ? "  NEW RECORD!" : "");
-        m_ui.TextCentered(W * 0.5f, y, buf, kPaper);
-        std::snprintf(buf, sizeof(buf), "HOUSES WRECKED  %d", houses);
-        m_ui.TextCentered(W * 0.5f, y + 30 * s, buf, kPaper);
-        std::snprintf(buf, sizeof(buf), "BUMPS  %d   HULL  %d%%", m_sim.bumps, m_health.Percent());
-        m_ui.TextCentered(W * 0.5f, y + 60 * s, buf, kPaper);
-        std::snprintf(buf, sizeof(buf), "CITY HALL SENDS A BILL: %d,500 COINS", houses * 12);
-        if (m_sunk) m_ui.TextCentered(W * 0.5f, y + 90 * s, "THE CANAL KEEPS YOUR SHIP", kRed);
-        else m_ui.TextCentered(W * 0.5f, y + 90 * s, houses > 0 ? buf : "CITY HALL APPLAUDS YOU", houses > 0 ? kRed : kGreen);
-        float bw = 200 * s, bh = 52 * s;
-        if (m_ui.Button(40, {W * 0.5f - bw - 10 * s, p.Bottom() - 80 * s, bw, bh}, "AGAIN", true)) StartRun();
-        if (m_ui.Button(41, {W * 0.5f + 10 * s, p.Bottom() - 80 * s, bw, bh}, "MENU")) GoMenu();
+        std::snprintf(lines[1], sizeof(lines[1]), "HOUSES WRECKED  %d", houses);
+        std::snprintf(lines[2], sizeof(lines[2]), "BUMPS  %d   HULL  %d%%", m_sim.bumps, m_health.Percent());
+        if (m_sunk) std::snprintf(lines[3], sizeof(lines[3]), "THE CANAL KEEPS YOUR SHIP");
+        else if (houses > 0) std::snprintf(lines[3], sizeof(lines[3]), "CITY HALL SENDS A BILL: %d,500 COINS", houses * 12);
+        else std::snprintf(lines[3], sizeof(lines[3]), "CITY HALL APPLAUDS YOU");
+        UiColor lastColor = m_sunk || houses > 0 ? kRed : kGreen;
+
+        // El ancho lo pone el renglon mas largo: la cuenta de la alcaldia a
+        // escala 2 mide mas que el panel de 520 al 75%, y se salia por el borde.
+        auto panelW = [&] {
+            float s = m_ui.S();
+            int t = m_ui.T();
+            float widest = static_cast<float>(strace::MeasureTextWidth(title, t * 3));
+            for (const char* l : lines) widest = std::max(widest, static_cast<float>(strace::MeasureTextWidth(l, t)));
+            return std::max(520 * s, widest + 60 * s);
+        };
+        m_ui.FitWidth(panelW() + 32 * m_ui.S());
+        float s = 1, k = 1;
+        int t = 2;
+        auto px = [&](float design, float tight) { return Air(design, tight, k, s); };
+        auto radius = [&] { return px(26, 16); };
+        auto pitch = [&] { return Lerp(7.0f * t + 6 * s, std::max(30 * s, 7.0f * t + 6 * s), k); };
+        auto bh = [&] { return std::max(px(52, 38), 7.0f * (t + 1) + 8 * s); };
+        auto starsY = [&] { return px(22, 10) + 21.0f * t + px(30, 8) + radius(); };
+        auto linesY = [&] { return starsY() + radius() + 4 * s + px(20, 8); };
+        auto panelH = [&] { return linesY() + 3 * pitch() + 7.0f * t + px(106, 14) + bh() + px(28, 12); };
+        k = m_ui.Fit(H, [&](float kk) {
+            k = kk;
+            s = m_ui.S();
+            t = m_ui.T();
+            return panelH() + 2 * px(24, 8);
+        });
+        s = m_ui.S();
+        t = m_ui.T();
+        float pw = panelW(), ph = panelH();
+        UiRect p{std::round(W * 0.5f - pw * 0.5f), std::round(H * 0.5f - ph * 0.5f), pw, ph};
+        m_ui.Panel(p);
+        m_ui.TextCentered(W * 0.5f, p.y + px(22, 10), title, m_sunk ? kRed : kGreen, t * 3);
+        for (int i = 0; i < 3; ++i) {
+            float r = radius(), cx = W * 0.5f + (i - 1) * r * 2.85f, cy = p.y + starsY();
+            m_ui.FilledOctagon(cx + 3 * s, cy + 4 * s, r, kNavyDark);
+            m_ui.FilledOctagon(cx, cy, r, !m_sunk && i < m_stars ? kOrange : kSteelDark);
+        }
+        float y = p.y + linesY();
+        for (int i = 0; i < 4; ++i) m_ui.TextCentered(W * 0.5f, y + pitch() * i, lines[i], i == 3 ? lastColor : kPaper);
+        float bw = 200 * s, h = bh(), by = p.Bottom() - px(28, 12) - h;
+        if (m_ui.Button(40, {W * 0.5f - bw - 10 * s, by, bw, h}, "AGAIN", true)) StartRun();
+        if (m_ui.Button(41, {W * 0.5f + 10 * s, by, bw, h}, "MENU")) GoMenu();
     }
 
     // EL HUD, por jerarquia: lo que se mira en carrera (el reloj y el casco)

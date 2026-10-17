@@ -83,8 +83,19 @@ public:
         m_ui = &strace::UiService::Frame();
         m_w = strace::UiService::Width();
         m_h = strace::UiService::Height();
-        m_s = std::max(0.75f, m_h / 720.0f);
-        m_text = std::max(1, static_cast<int>(std::round(m_s * 2.0f)));
+        // LA ESCALA BASE sigue a la pantalla con un piso de 0,75, que es lo
+        // mas chico en que la fuente de 5x7 va a escala 2. Mira el ancho
+        // tambien (contra 960, no 1280): en apaisado manda el alto, pero en
+        // una ventana angosta o vertical las columnas se salian por el costado.
+        //
+        // El piso NO garantiza que una pantalla entre: el diseno esta medido
+        // contra 720 filas, y el embed de itch.io (640x360) tiene la mitad.
+        // De eso se encarga Fit(): cada pantalla primero se APRIETA (aire) y
+        // solo si ni asi entra se achica. Bajar el piso a 0,5 para todas las
+        // pantallas las entraba, pero a la mitad de tamano en cualquier
+        // ventana chica - con el texto a escala 1 aunque sobrara lugar.
+        m_base = std::max(0.75f, std::min(m_h / 720.0f, m_w / 960.0f));
+        Restore();
         mouse.Update(m_w, m_h);
         if (!mouse.down && !mouse.released) activeId = 0;
         m_hoverNow = 0;
@@ -101,6 +112,47 @@ public:
     float S() const { return m_s; }
     int T() const { return m_text; }
     strace::UiDrawList& Draw() { return *m_ui; }
+
+    // EL AJUSTE DE UNA PANTALLA A LA VENTANA. `need(k)` devuelve cuanto alto
+    // pide la pantalla con un aire k (1 = el diseno de 720 filas, 0 = lo mas
+    // apretado que se sigue leyendo), en pixeles y con la escala del momento:
+    // tiene que leer S() y T() ADENTRO, porque Fit puede cambiarlas.
+    //
+    // El orden es la decision: primero se quita aire (margenes, huecos,
+    // botones mas bajos) y el texto queda del mismo tamano; solo si la
+    // pantalla no entra ni apretada se achica todo, y solo lo justo. Devuelve
+    // el aire mas grande que entra. La pantalla tiene que dejar la escala
+    // como estaba al terminar (UiFitScope).
+    template <class Need>
+    float Fit(float avail, Need&& need) {
+        for (int i = 0; i < 3; ++i) {
+            float tight = need(0.0f);
+            if (tight <= avail) break;
+            // T es entero: al achicar puede saltar de 2 a 1, por eso se mide
+            // otra vez en vez de confiar en una sola regla de tres.
+            Shrink(Shrunk() * avail / tight);
+        }
+        if (need(1.0f) <= avail) return 1.0f;
+        float lo = 0.0f, hi = 1.0f;
+        for (int i = 0; i < 12; ++i) {
+            float mid = (lo + hi) * 0.5f;
+            (need(mid) <= avail ? lo : hi) = mid;
+        }
+        return lo;
+    }
+
+    // Lo mismo de costado, para una pantalla que no puede apretar su ancho
+    // (un panel con texto adentro): si no entra, se achica.
+    void FitWidth(float need) {
+        if (need > m_w) Shrink(Shrunk() * m_w / need);
+    }
+
+    void Shrink(float f) {
+        m_s = m_base * std::min(1.0f, f);
+        m_text = std::max(1, static_cast<int>(std::round(m_s * 2.0f)));
+    }
+    void Restore() { Shrink(1.0f); }
+    float Shrunk() const { return m_s / m_base; }
 
     bool Hover(const UiRect& r) const { return r.Contains(mouse.x, mouse.y); }
 
@@ -233,9 +285,17 @@ public:
 
 private:
     strace::UiDrawList* m_ui = nullptr;
-    float m_w = 1280, m_h = 720, m_s = 1;
+    float m_w = 1280, m_h = 720, m_s = 1, m_base = 1;
     int m_text = 2;
     int m_hoverNow = 0, m_hoverLast = 0;
+};
+
+// Devuelve la escala base al salir de una pantalla que se ajusto con Fit: si
+// no, lo que se dibuja despues (el aviso, el HUD del frame siguiente) heredaria
+// la escala achicada de otra pantalla.
+struct UiFitScope {
+    Ui& ui;
+    ~UiFitScope() { ui.Restore(); }
 };
 
 }

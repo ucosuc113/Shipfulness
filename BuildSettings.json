@@ -26,7 +26,7 @@
   "input": {
     "cursor": "visible"
   },
-  "platform": "windows",
+  "platform": "web",
   "product": {
     "company": "",
     "copyright": "",
@@ -35,10 +35,10 @@
     "version": "1.0.0"
   },
   "render": {
-    "aa": "x4",
+    "aa": "x2",
     "lighting": "soft",
-    "shadowAA": "x4",
-    "shadows": "high"
+    "shadowAA": "x2",
+    "shadows": "medium"
   },
   "scenes": [
     {
